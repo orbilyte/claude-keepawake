@@ -1,0 +1,99 @@
+# Claude KeepAwake ☕
+
+A tiny macOS menu bar app that keeps your Mac awake while local Claude sessions, Claude Code, or dev servers are running — so long-running agent sessions survive idle time and usage-limit resets, even with the lid closed.
+
+No admin rights needed to install. No background phoning home. Just a coffee cup in your menu bar.
+
+## Why
+
+Local AI coding sessions (Claude Code, Claude Desktop, OpenCode, …) run on *your* Mac. When you walk away, macOS puts the machine to sleep after a few minutes of idle time — killing the session mid-task. This tool makes sure that doesn't happen:
+
+- **Automatic:** stays awake only while a Claude session or dev server actually runs (AC power only — battery is never held hostage)
+- **Manual:** one click for "stay awake now, unlimited"
+- **Clamshell mode:** keep running with the lid closed (display turns off automatically) — reach your sessions from the Claude Code mobile app while you're away
+
+## Requirements
+
+- macOS 13 or newer (Apple Silicon or Intel — universal binary)
+- No Xcode or command line tools needed for installation
+
+## Install
+
+One-liner (works from a terminal or from an AI coding session):
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/orbilyte/claude-keepawake/main/install.sh | bash
+```
+
+Install a pinned version instead of latest:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/orbilyte/claude-keepawake/main/install.sh | KEEPAWAKE_VERSION=v0.1.0 bash
+```
+
+Then look for the **coffee cup icon ☕ in your menu bar**. It starts automatically at login.
+
+## The menu
+
+| Item | What it does |
+|---|---|
+| **Automatic – stay awake while Claude / dev servers run** | Background agent (launchd) holds a power assertion while any `claude` process, Claude Desktop, or a dev server on ports 3101/3102 runs. AC only. |
+| **Stay awake now (unlimited, AC only)** | Immediate keep-awake until you turn it off or quit the app. |
+| **Clamshell mode – keep running with lid closed (AC only)** | Sets `pmset -c disablesleep 1`. The Mac keeps running with the lid closed and the display turns off automatically when you close it. Asks for your admin password once per toggle. |
+| **Start at login** | Toggles the menu bar app's login item. |
+
+The cup is filled while the Mac is actively being kept awake.
+
+## How it works
+
+- **Menu bar app** (`~/Applications/Claude KeepAwake.app`, Swift, ~350 lines, no dependencies) — UI and toggles
+- **Agent** (`~/.local/bin/claude-keepawake-agent`) — a launchd job (`com.claude-keepawake.agent`, KeepAlive) that:
+  - watches for Claude processes/dev servers and runs `caffeinate -s -w <pid>` (power assertion on AC power only)
+  - watches the lid state: with clamshell mode active, closing the lid runs `pmset displaysleepnow` (display off, session keeps running)
+- **Clamshell mode** flips `pmset -c disablesleep` — scoped to AC power, so a closed MacBook on battery still sleeps normally (safe in a bag)
+- Log: `~/.local/state/claude-keepawake/agent.log` (openable from the menu)
+
+Nothing runs as root. The only privileged operation is toggling clamshell mode, which uses the standard macOS admin password dialog — the app never sees or stores your password.
+
+## Configuration (optional)
+
+Create `~/.config/claude-keepawake/agent.conf` to override defaults:
+
+```bash
+CHECK_INTERVAL=5
+PORTS=(3101 3102 3000 8080)
+PATTERNS=("claude-code" "/Applications/Claude.app" "opencode")
+```
+
+Changes apply on next agent restart (toggle "Automatic" off and on in the menu, or `launchctl kickstart -k gui/$(id -u)/com.claude-keepawake.agent`).
+
+## Install from source / development
+
+```bash
+git clone https://github.com/orbilyte/claude-keepawake.git
+cd claude-keepawake
+./scripts/build-release.sh          # builds dist/claude-keepawake.tar.gz (needs Xcode CLT)
+KEEPAWAKE_LOCAL=1 ./install.sh      # installs the local build
+```
+
+## Releases
+
+Pushing to `main` with a bumped `VERSION` file builds and publishes a new GitHub release (universal binary) automatically via GitHub Actions. Old versions stay pinned and installable.
+
+## Uninstall
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/orbilyte/claude-keepawake/main/uninstall.sh | bash
+```
+
+Add `--purge` to also delete logs and config. If clamshell mode is still enabled, the uninstaller reminds you how to turn it off.
+
+## Notes
+
+- macOS 26 dims third-party menu bar icons on the inactive display — the cup is rendered non-template white so it stays visible
+- If you ever remove the cup from the menu bar by accident (⌘-drag out), it comes back on the next app start
+- ⌘-drag to move the icon; its position persists
+
+## License
+
+[MIT](LICENSE)
