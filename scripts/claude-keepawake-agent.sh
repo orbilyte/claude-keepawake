@@ -17,6 +17,7 @@ fi
 CHILD=""
 LAST_MODE=""
 WAS_CLOSED=""
+LAST_POWER=""
 
 log() { echo "$(date '+%Y-%m-%d %H:%M:%S') $*" >> "$LOG_FILE"; }
 
@@ -56,6 +57,14 @@ log "claude-keepawake agent started (clamshell watcher active)"
 TICK=0
 while true; do
   TICK=$((TICK + 1))
+
+  POWER=$(pmset -g batt 2>/dev/null | grep -q "AC Power" && echo "AC" || echo "BATT")
+  if [ "$POWER" != "$LAST_POWER" ]; then
+    if [ -n "$LAST_POWER" ]; then
+      log "power source changed: $LAST_POWER -> $POWER (SleepDisabled=$(stay_awake_mode), lid=$(clamshell_closed && echo closed || echo open))"
+    fi
+    LAST_POWER="$POWER"
+  fi
 
   if clamshell_closed; then
     if [ -z "$WAS_CLOSED" ]; then
