@@ -233,8 +233,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     @objc private func toggleClamshell() {
         let current = Self.parseClamshell(shellOut(["/usr/bin/pmset", "-g"]) ?? "")
-        let value = current ? "0" : "1"
-        let script = "do shell script \"/usr/bin/pmset -c disablesleep \(value)\" with administrator privileges"
+        let args = current ? "-a disablesleep 0" : "-c disablesleep 1"
+        let script = "do shell script \"/usr/bin/pmset \(args)\" with administrator privileges"
         let p = Process()
         p.executableURL = URL(fileURLWithPath: "/usr/bin/osascript")
         p.arguments = ["-e", script]
@@ -252,7 +252,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 appendLog("clamshell error: osascript exit \(p.terminationStatus)")
                 NSSound.beep()
             } else {
-                appendLog("clamshell toggled: pmset -c disablesleep \(value)")
+                appendLog("clamshell toggled: pmset \(args)")
             }
         } catch {
             appendLog("clamshell error: osascript failed to start (\(error))")
