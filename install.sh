@@ -77,10 +77,27 @@ cat > "$MENU_PLIST" <<PLIST
 </plist>
 PLIST
 
-launchctl bootout "gui/$UID_N/com.claude-keepawake.agent" 2>/dev/null || true
-launchctl bootout "gui/$UID_N/com.claude-keepawake.menu" 2>/dev/null || true
-launchctl bootstrap "gui/$UID_N" "$AGENT_PLIST"
-launchctl bootstrap "gui/$UID_N" "$MENU_PLIST"
+bootout_and_wait() {
+  launchctl bootout "gui/$UID_N/$1" 2>/dev/null || true
+  for _ in 1 2 3 4 5 6 7 8 9 10; do
+    launchctl print "gui/$UID_N/$1" >/dev/null 2>&1 || return 0
+    sleep 0.5
+  done
+}
+
+bootstrap_with_retry() {
+  local plist="$1" attempt
+  for attempt in 1 2 3; do
+    launchctl bootstrap "gui/$UID_N" "$plist" 2>/dev/null && return 0
+    sleep 1
+  done
+  launchctl bootstrap "gui/$UID_N" "$plist"
+}
+
+bootout_and_wait "com.claude-keepawake.agent"
+bootout_and_wait "com.claude-keepawake.menu"
+bootstrap_with_retry "$AGENT_PLIST"
+bootstrap_with_retry "$MENU_PLIST"
 launchctl enable "gui/$UID_N/com.claude-keepawake.menu" 2>/dev/null || true
 
 sleep 2
