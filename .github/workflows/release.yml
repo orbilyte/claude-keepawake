@@ -1,0 +1,49 @@
+name: release
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Determine version
+        id: ver
+        run: |
+          VERSION="$(cat VERSION)"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          if git rev-parse "v$VERSION" >/dev/null 2>&1; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Build
+        if: steps.ver.outputs.exists == 'false'
+        run: ./scripts/build-release.sh
+
+      - name: Create tag and release
+        if: steps.ver.outputs.exists == 'false'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.ver.outputs.version }}
+        run: |
+          SHA="$(git rev-parse --short HEAD)"
+          gh release create "v$VERSION" \
+            dist/claude-keepawake.tar.gz \
+            --title "Claude KeepAwake v$VERSION" \
+            --notes "Built from main@${SHA} (universal arm64 + x86_64).
+
+          Install:
+          \`\`\`bash
+          curl -fsSL https://raw.githubusercontent.com/$GITHUB_REPOSITORY/main/install.sh | bash
+          \`\`\`"
