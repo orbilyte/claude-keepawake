@@ -29,7 +29,9 @@ jobs:
 
       - name: Build
         if: steps.ver.outputs.exists == 'false'
-        run: ./scripts/build-release.sh
+        run: |
+          bash -n install.sh uninstall.sh scripts/build-release.sh scripts/claude-keepawake-agent.sh
+          ./scripts/build-release.sh
 
       - name: Create tag and release
         if: steps.ver.outputs.exists == 'false'

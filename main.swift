@@ -21,7 +21,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         var awake = false
         var ac = true
         var agent = true
-        var clamshell = false
+        var unsafeSleepOverride = false
         var login = true
         var fetched = Date.distantPast
     }
@@ -33,7 +33,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var powerLine: NSMenuItem!
     private var autoItem: NSMenuItem!
     private var manualItem: NSMenuItem!
-    private var clamItem: NSMenuItem!
+    private var legacySleepItem: NSMenuItem!
     private var loginItem: NSMenuItem!
 
     override init() {
@@ -57,6 +57,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             if button.image == nil { button.title = "☕︎" }
             button.toolTip = "Claude KeepAwake"
         }
+        menu.autoenablesItems = false
         menu.delegate = self
         statusItem.menu = menu
         buildMenu()
@@ -94,11 +95,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         manualItem.target = self
         menu.addItem(manualItem)
 
-        clamItem = NSMenuItem(
-            title: "Clamshell mode – keep running with lid closed (AC only)",
-            action: #selector(toggleClamshell), keyEquivalent: "")
-        clamItem.target = self
-        menu.addItem(clamItem)
+        legacySleepItem = NSMenuItem(
+            title: "Lid-closed mode unavailable (battery safety)",
+            action: #selector(disableLegacySleepOverride), keyEquivalent: "")
+        legacySleepItem.target = self
+        menu.addItem(legacySleepItem)
 
         menu.addItem(.separator())
 
@@ -126,8 +127,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         if autoItem.state != autoState { autoItem.state = autoState }
         let manualState: NSControl.StateValue = (manualProc?.isRunning ?? false) ? .on : .off
         if manualItem.state != manualState { manualItem.state = manualState }
-        let clamState: NSControl.StateValue = snap.clamshell ? .on : .off
-        if clamItem.state != clamState { clamItem.state = clamState }
+        if snap.unsafeSleepOverride {
+            legacySleepItem.title = "⚠ Disable unsafe legacy lid mode"
+            legacySleepItem.isEnabled = true
+            legacySleepItem.state = .on
+        } else {
+            legacySleepItem.title = "Lid-closed mode unavailable (battery safety)"
+            legacySleepItem.isEnabled = false
+            legacySleepItem.state = .off
+        }
         let loginState: NSControl.StateValue = snap.login ? .on : .off
         if loginItem.state != loginState { loginItem.state = loginState }
         refreshIcon()
@@ -143,7 +151,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             s.awake = self.shell(["/usr/bin/pgrep", "-x", "caffeinate"]) == 0
             s.ac = (self.shellOut(["/usr/bin/pmset", "-g", "batt"]) ?? "").contains("AC Power")
             s.agent = self.shell(["/bin/launchctl", "print", "gui/\(self.uid)/\(self.agentLabel)"]) == 0
-            s.clamshell = Self.parseClamshell(self.shellOut(["/usr/bin/pmset", "-g"]) ?? "")
+            s.unsafeSleepOverride = Self.parseSleepDisabled(self.shellOut(["/usr/bin/pmset", "-g"]) ?? "")
             s.login = Self.parseLogin(self.shellOut(["/bin/launchctl", "print-disabled", "gui/\(self.uid)"]) ?? "", label: self.uiLabel)
             s.fetched = Date()
             DispatchQueue.main.async {
@@ -154,7 +162,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
     }
 
-    private static func parseClamshell(_ out: String) -> Bool {
+    private static func parseSleepDisabled(_ out: String) -> Bool {
         var found = false
         for raw in out.split(separator: "\n") {
             let t = String(raw).trimmingCharacters(in: .whitespaces)
@@ -172,6 +180,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         return true
     }
 
+    @discardableResult
     private func shell(_ args: [String]) -> Int32 {
         let p = Process()
         p.executableURL = URL(fileURLWithPath: args[0])
@@ -231,10 +240,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         refreshState(force: true)
     }
 
-    @objc private func toggleClamshell() {
-        let current = Self.parseClamshell(shellOut(["/usr/bin/pmset", "-g"]) ?? "")
-        let args = current ? "-a disablesleep 0" : "-c disablesleep 1"
-        let script = "do shell script \"/usr/bin/pmset \(args)\" with administrator privileges"
+    @objc private func disableLegacySleepOverride() {
+        guard Self.parseSleepDisabled(shellOut(["/usr/bin/pmset", "-g"]) ?? "") else { return }
+        let script = "do shell script \"/usr/bin/pmset -a disablesleep 0\" with administrator privileges"
         let p = Process()
         p.executableURL = URL(fileURLWithPath: "/usr/bin/osascript")
         p.arguments = ["-e", script]
@@ -246,16 +254,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             p.waitUntilExit()
             let data = errPipe.fileHandleForReading.readDataToEndOfFile()
             if let msg = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines), !msg.isEmpty {
-                appendLog("clamshell error (\(p.terminationStatus)): \(msg)")
+                appendLog("legacy sleep override error (\(p.terminationStatus)): \(msg)")
                 NSSound.beep()
             } else if p.terminationStatus != 0 {
-                appendLog("clamshell error: osascript exit \(p.terminationStatus)")
+                appendLog("legacy sleep override error: osascript exit \(p.terminationStatus)")
                 NSSound.beep()
             } else {
-                appendLog("clamshell toggled: pmset \(args)")
+                appendLog("unsafe legacy sleep override disabled")
             }
         } catch {
-            appendLog("clamshell error: osascript failed to start (\(error))")
+            appendLog("legacy sleep override error: osascript failed to start (\(error))")
             NSSound.beep()
         }
         refreshState(force: true)
