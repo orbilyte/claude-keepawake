@@ -26,4 +26,4 @@ else
   echo "Claude KeepAwake removed (logs kept at $LOG_DIR, use --purge to delete)."
 fi
 
-pmset -g 2>/dev/null | grep -q "SleepDisabled		1" && echo "Note: clamshell mode is still enabled in pmset. Re-enable it via System Settings or run: sudo pmset -c disablesleep 0" || true
+pmset -g 2>/dev/null | grep -Eq 'SleepDisabled[[:space:]]+1' && echo "WARNING: unsafe legacy SleepDisabled=1 is still active. Run: sudo pmset -a disablesleep 0" || true

@@ -114,4 +114,9 @@ echo "  Agent:     $AGENT_BIN (auto-starts, KeepAlive)"
 echo "  Log:       $LOG_DIR/agent.log"
 echo
 echo "Look for the coffee cup icon in your menu bar."
-echo "The first toggle of 'Clamshell mode' asks for your admin password once."
+if pmset -g 2>/dev/null | grep -Eq 'SleepDisabled[[:space:]]+1'; then
+  echo
+  echo "WARNING: unsafe legacy SleepDisabled=1 is active."
+  echo "Open the coffee menu and click '⚠ Disable unsafe legacy lid mode'."
+  echo "Until cleared, a closed MacBook can stay awake and drain its battery."
+fi

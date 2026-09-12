@@ -16,7 +16,6 @@ fi
 
 CHILD=""
 LAST_MODE=""
-WAS_CLOSED=""
 LAST_POWER=""
 
 log() { echo "$(date '+%Y-%m-%d %H:%M:%S') $*" >> "$LOG_FILE"; }
@@ -43,16 +42,23 @@ find_target_pid() {
   return 1
 }
 
-clamshell_closed() {
-  ioreg -r -k AppleClamshellState -d 4 2>/dev/null | grep -q 'AppleClamshellState" = Yes'
+lid_state() {
+  if ioreg -r -k AppleClamshellState -d 4 2>/dev/null | grep -q 'AppleClamshellState" = Yes'; then
+    echo "closed"
+  else
+    echo "open"
+  fi
 }
 
-stay_awake_mode() {
+sleep_disabled() {
   pmset -g 2>/dev/null | awk '/SleepDisabled|disablesleep/ {on = ($NF == "1")} END {print (on ? "1" : "0")}'
 }
 
 mkdir -p "$STATE_DIR"
-log "claude-keepawake agent started (clamshell watcher active)"
+log "claude-keepawake agent started (power-source diagnostics active)"
+if [ "$(sleep_disabled)" = "1" ]; then
+  log "WARNING: unsafe legacy SleepDisabled=1 detected - disable it from the menu"
+fi
 
 TICK=0
 while true; do
@@ -61,23 +67,14 @@ while true; do
   POWER=$(pmset -g batt 2>/dev/null | grep -q "AC Power" && echo "AC" || echo "BATT")
   if [ "$POWER" != "$LAST_POWER" ]; then
     if [ -n "$LAST_POWER" ]; then
-      log "power source changed: $LAST_POWER -> $POWER (SleepDisabled=$(stay_awake_mode), lid=$(clamshell_closed && echo closed || echo open))"
-    fi
-    LAST_POWER="$POWER"
-  fi
-
-  if clamshell_closed; then
-    if [ -z "$WAS_CLOSED" ]; then
-      WAS_CLOSED=1
-      if [ "$(stay_awake_mode)" = "1" ]; then
-        log "lid closed (clamshell mode active) - display off"
-        /usr/bin/pmset displaysleepnow
-      else
-        log "lid closed (clamshell mode inactive - no display off)"
+      DISABLED=$(sleep_disabled)
+      LID=$(lid_state)
+      log "power source changed: $LAST_POWER -> $POWER (SleepDisabled=$DISABLED, lid=$LID)"
+      if [ "$POWER" = "BATT" ] && [ "$DISABLED" = "1" ]; then
+        log "CRITICAL: unsafe SleepDisabled=1 active on battery"
       fi
     fi
-  else
-    WAS_CLOSED=""
+    LAST_POWER="$POWER"
   fi
 
   if [ -n "$CHILD" ] && ! kill -0 "$CHILD" 2>/dev/null; then
